@@ -1,4 +1,5 @@
 import { createTool } from "@mastra/core/tools";
+import { AISpanType } from "@mastra/core/ai-tracing";
 import { z } from "zod";
 
 interface GeocodingResponse {
@@ -35,7 +36,19 @@ export const weatherTool = createTool({
     conditions: z.string(),
     location: z.string(),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, tracingContext }) => {
+    const evalSpan = tracingContext?.currentSpan?.createChildSpan({
+      type: AISpanType.GENERIC,
+      name: "evaluate_result",
+      input: {
+        query: context.location,
+      },
+    });
+    evalSpan?.end({
+      output: {
+        query: context.location,
+      },
+    });
     return await getWeather(context.location);
   },
 });

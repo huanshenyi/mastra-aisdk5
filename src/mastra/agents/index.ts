@@ -1,8 +1,8 @@
 import { Agent } from "@mastra/core/agent";
-import { bedrock } from "../../../app/lib/bedrock-providers"
+import { bedrock } from "../../../app/lib/bedrock-providers";
 
 import { weatherTool } from "../tools";
-import {vercelWeatherTool} from "../tools/vercelWeatherTool"
+import { vercelWeatherTool } from "../tools/vercelWeatherTool";
 import { Memory } from "@mastra/memory";
 import { LibSQLStore } from "@mastra/libsql";
 
@@ -33,8 +33,9 @@ export const weatherAgent = new Agent({
       Use the weatherTool to fetch current weather data.
 
 `,
-  model: bedrock("us.anthropic.claude-sonnet-4-20250514-v1:0"),
+  model: bedrock("us.anthropic.claude-sonnet-4-5-20250929-v1:0"),
   tools: {
+    // weatherTool,
     vercelWeatherTool,
   },
   memory,
