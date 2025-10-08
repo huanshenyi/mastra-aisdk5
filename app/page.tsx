@@ -42,6 +42,11 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/src/components/ai-elements/tool';
+import {
+  Reasoning,
+  ReasoningContent,
+  ReasoningTrigger,
+} from '@/src/components/ai-elements/reasoning';
 
 type WeatherToolInput = {
   location: string;
@@ -65,19 +70,22 @@ type WeatherToolUIPart = ToolUIPart<{
 
 const models = [
   { id: 'gpt-4o', name: 'GPT-4o' },
-  { id: 'claude-opus-4-20250514', name: 'Claude 4 Opus' },
+  { id: 'claude-sonnet-4.5-20250929', name: 'Sonnet 4.5' },
 ];
 
 const InputDemo = () => {
   const [text, setText] = useState<string>('');
-  const [model, setModel] = useState<string>(models[0].id);
+  const [model, setModel] = useState<string>(models[1].id);
   const [useMicrophone, setUseMicrophone] = useState<boolean>(false);
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
 
-  const { messages, status, sendMessage } = useChat({
+  const { messages, status, sendMessage, regenerate } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/chat',
     }),
+    onToolCall({ toolCall }) {
+      console.log("toolCall.toolName:", toolCall.toolName) //webSearchServer_tavily_search
+    }
   });
 
   const handleSubmit = (message: PromptInputMessage) => {
@@ -112,7 +120,7 @@ const InputDemo = () => {
     (part) => part.type === 'tool-vercelWeatherTool', //tool-weatherTool
   ) as WeatherToolUIPart | undefined;
 
-  console.log("weatherTool output", weatherTool?.output)
+  // console.log("weatherTool output", weatherTool?.output)
 
   return (
     <div className="max-w-4xl mx-auto p-6 relative size-full rounded-lg border h-[600px]">
@@ -149,13 +157,27 @@ const InputDemo = () => {
                 <Message from={message.role} key={message.id}>
                   <MessageContent>
                     {message.parts.map((part, i) => {
-                      console.log("type:", part.type)
                       switch (part.type) {
                         case 'text':
                           return (
                             <Response key={`${message.id}-${i}`}>
                               {part.text}
                             </Response>
+                          );
+                        case 'reasoning':
+                          return (
+                            <Reasoning
+                              key={`${message.id}-${i}`}
+                              className="w-full"
+                              isStreaming={
+                                status === 'streaming' &&
+                                i === message.parts.length - 1 &&
+                                message.id === messages.at(-1)?.id
+                              }
+                            >
+                              <ReasoningTrigger />
+                              <ReasoningContent>{part.text}</ReasoningContent>
+                            </Reasoning>
                           );
                         default:
                           return null;

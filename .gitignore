@@ -42,3 +42,8 @@ next-env.d.ts
 
 mastra.db*
 .env
+working-memory.db
+vector-memory.db
+review-memory.db
+review-memory.db-shm
+review-memory.db-wal
