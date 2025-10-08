@@ -6,7 +6,6 @@ import {
     PromptInputActionMenu,
     PromptInputActionMenuContent,
     PromptInputActionMenuTrigger,
-    PromptInputAttachment,
     PromptInputAttachments,
     PromptInputBody,
     PromptInputButton,
@@ -21,10 +20,13 @@ import {
     PromptInputToolbar,
     PromptInputTools,
 } from '@/src/components/ai-elements/prompt-input';
-import { GlobeIcon, MessageSquare, MicIcon } from 'lucide-react';
-import { useState } from 'react';
+import { GlobeIcon, MessageSquare, MicIcon, FileIcon, XIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { getMessagesByResource } from './actions';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
+import { DefaultChatTransport, type FileUIPart } from 'ai';
+import { usePromptInputAttachments } from '@/src/components/ai-elements/prompt-input';
+import { Button } from '@/components/ui/button';
 import {
     Conversation,
     ConversationContent,
@@ -95,17 +97,112 @@ async function convertBlobUrlToDataUrl(blobUrl: string): Promise<string> {
     });
 }
 
+// Generate time-based resourceId (1 hour granularity)
+const getResourceId = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hour = String(now.getHours()).padStart(2, '0');
+    return `resource-${year}-${month}-${day}-${hour}`;
+};
+
+// Custom attachment component with file name and type display
+const CustomAttachment = ({ data }: { data: FileUIPart & { id: string } }) => {
+    const attachments = usePromptInputAttachments();
+
+    // Get file type description
+    const getFileTypeLabel = () => {
+        if (data.mediaType?.includes('pdf')) {
+            return 'PDF Document';
+        } else if (data.mediaType?.includes('presentation') || data.mediaType?.includes('powerpoint')) {
+            return 'PowerPoint Presentation';
+        } else if (data.mediaType?.startsWith('image/')) {
+            return 'Image';
+        }
+        return data.mediaType?.split('/')[1]?.toUpperCase() || 'File';
+    };
+
+    // Get file extension from filename or mediaType
+    const getFileIcon = () => {
+        if (data.mediaType?.includes('pdf')) {
+            return <FileIcon className="size-6 text-red-500" />;
+        } else if (data.mediaType?.includes('presentation') || data.mediaType?.includes('powerpoint')) {
+            return <FileIcon className="size-6 text-orange-500" />;
+        } else if (data.mediaType?.startsWith('image/')) {
+            return null; // Will show image preview
+        }
+        return <FileIcon className="size-6 text-gray-500" />;
+    };
+
+    return (
+        <div className="group relative flex items-center gap-3 rounded-lg border bg-card p-3 pr-10 shadow-sm min-w-[250px]">
+            {data.mediaType?.startsWith('image/') && data.url ? (
+                <img
+                    alt={data.filename || 'attachment'}
+                    className="h-16 w-16 rounded object-cover flex-shrink-0"
+                    src={data.url}
+                />
+            ) : (
+                <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-muted">
+                    {getFileIcon()}
+                </div>
+            )}
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold truncate">
+                    {data.filename || 'Untitled'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                    {getFileTypeLabel()}
+                </p>
+            </div>
+            <Button
+                aria-label="Remove attachment"
+                className="absolute -right-2 -top-2 h-7 w-7 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => attachments.remove(data.id)}
+                size="icon"
+                type="button"
+                variant="destructive"
+            >
+                <XIcon className="h-4 w-4" />
+            </Button>
+        </div>
+    );
+};
+
 const ReviewPage = () => {
     const [text, setText] = useState<string>('');
     const [model, setModel] = useState<string>(models[1].id);
     const [useMicrophone, setUseMicrophone] = useState<boolean>(false);
     const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
+    const [resourceId] = useState<string>(getResourceId());
+    const [threadId, setThreadId] = useState<string | undefined>(undefined);
 
-    const { messages, status, sendMessage } = useChat({
+    const { messages, status, sendMessage, setMessages } = useChat({
         transport: new DefaultChatTransport({
             api: '/api/chat',
         }),
+        onFinish({ message }) {
+            // Extract threadId from metadata
+            if (message.metadata) {
+                const metadata = message.metadata as { threadId?: string; resourceId?: string };
+                if (metadata.threadId) {
+                    setThreadId(metadata.threadId);
+                }
+            }
+        }
     });
+
+    // Fetch existing messages on mount and set them
+    useEffect(() => {
+        const fetchMessages = async () => {
+            const existingMessages = await getMessagesByResource(resourceId);
+            if (existingMessages && existingMessages.length > 0) {
+                setMessages(existingMessages);
+            }
+        };
+        fetchMessages();
+    }, [resourceId, setMessages]);
 
     const handleSubmit = async (message: PromptInputMessage) => {
         const hasText = Boolean(message.text);
@@ -150,6 +247,8 @@ const ReviewPage = () => {
                 body: {
                     model: model,
                     webSearch: useWebSearch,
+                    resourceId: resourceId,
+                    threadId: threadId,
                 },
             },
         );
@@ -278,11 +377,10 @@ const ReviewPage = () => {
                     className="mt-4"
                     globalDrop
                     multiple
-                    accept="image/*,.pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
                 >
                     <PromptInputBody>
-                        <PromptInputAttachments>
-                            {(attachment) => <PromptInputAttachment data={attachment} />}
+                        <PromptInputAttachments className="gap-2 p-2 min-h-0">
+                            {(attachment) => <CustomAttachment data={attachment} />}
                         </PromptInputAttachments>
                         <PromptInputTextarea
                             onChange={(e) => setText(e.target.value)}

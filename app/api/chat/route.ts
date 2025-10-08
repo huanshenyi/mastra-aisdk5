@@ -100,11 +100,18 @@ export async function POST(req: Request) {
     messages,
     model,
     webSearch,
+    resourceId,
+    threadId: existingThreadId,
   }: {
     messages: UIMessage[];
     model: string;
     webSearch: boolean;
+    resourceId?: string;
+    threadId?: string;
   } = await req.json();
+
+  // Use resourceId as threadId for consistent 1-hour sessions
+  const threadId = existingThreadId || resourceId || `thread-${Date.now()}`;
 
   // Process messages to handle files
   const processedUIMessages: UIMessage[] = [];
@@ -159,17 +166,22 @@ export async function POST(req: Request) {
   console.log("Model messages:", JSON.stringify(modelMessages, null, 2));
 
   const stream = await myAgent.stream(modelMessages, {
-    stopWhen: stepCountIs(3),
+    stopWhen: stepCountIs(5),
     format: "aisdk",
-    memory: {
-      thread: "2",
-      resource: "1",
-    },
-    maxSteps: 5,
+    memory: resourceId ? {
+      thread: threadId,
+      resource: resourceId,
+    } : undefined,
+    maxSteps: 3,
     toolChoice: "auto",
   });
 
   return stream.toUIMessageStreamResponse({
     sendReasoning: true,
+    messageMetadata(options) {
+      if (options.part.type === "start") {
+        return { threadId, resourceId };
+      }
+    },
   });
 }
