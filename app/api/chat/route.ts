@@ -1,36 +1,23 @@
 import { mastra } from "@/src/mastra";
-import { stepCountIs, type UIMessage, convertToModelMessages } from "ai";
-import { z } from "zod";
-import { pdf } from "pdf-parse";
+import { CoreMessage } from "@mastra/core";
+import { stepCountIs, type UIMessage } from "ai";
 import officeParser from "officeparser";
-
-const evaluationSectionSchema = z.object({
-  evaluation: z.string(),
-  strengths: z.array(z.string()),
-  improvementsNeeded: z.array(z.string()),
-  improvementActions: z.array(z.string()),
-});
-
-const reviewResponseSchema = z.object({
-  overallEvaluation: z.object({
-    evaluation: z.string(),
-    improvementActions: z.array(z.string()),
-  }),
-  documentFormat: evaluationSectionSchema,
-  readerPerspective: evaluationSectionSchema,
-  implementationContent: evaluationSectionSchema,
-  userImpact: evaluationSectionSchema,
-  costValidity: evaluationSectionSchema,
-  scheduleDescription: evaluationSectionSchema,
-  organizationChart: evaluationSectionSchema,
-});
 
 // Helper function to process files
 async function processFile(file: {
   filename: string;
   mediaType: string;
   url: string;
-}): Promise<{ type: string; text?: string; image?: string }> {
+}): Promise<{
+  type: string;
+  text?: string;
+  image?: string;
+  url?: string;
+  data?: Buffer;
+  mediaType?: string;
+  filename?: string;
+  providerOptions?: any;
+}> {
   const { filename, mediaType, url } = file;
 
   // Handle images - pass through as-is (no base64 parsing needed)
@@ -50,21 +37,19 @@ async function processFile(file: {
   const [, , base64Data] = base64Match;
   const buffer = Buffer.from(base64Data, 'base64');
 
-  // Handle PDFs
+  // Handle PDFs - return Buffer with citations enabled for visual understanding
   if (mediaType === 'application/pdf') {
-    try {
-      const data = await pdf(buffer);
-      return {
-        type: 'text',
-        text: `[PDF: ${filename}]\n\n${data.text}`,
-      };
-    } catch (error) {
-      console.error('Error parsing PDF:', error);
-      return {
-        type: 'text',
-        text: `[Error: Could not parse PDF file ${filename}]`,
-      };
-    }
+    return {
+      type: 'file',
+      data: buffer,
+      mediaType,
+      filename,
+      providerOptions: {
+        bedrock: {
+          citations: { enabled: true },
+        },
+      },
+    };
   }
 
   // Handle PowerPoint files
@@ -133,7 +118,7 @@ export async function POST(req: Request) {
           url: part.url,
         });
 
-        // Add processed file content as text or image part
+        // Add processed file content as text, image, or file part
         if (processed.type === 'text') {
           processedParts.push({
             type: 'text',
@@ -145,6 +130,28 @@ export async function POST(req: Request) {
             mediaType: 'image/png',
             url: processed.image,
           });
+        } else if (processed.type === 'file') {
+          // Keep as file with Buffer data (following official AI SDK docs)
+          const filePart = {
+            type: 'file' as any,
+            data: processed.data,  // Keep Buffer as-is
+            mediaType: processed.mediaType || 'application/pdf',
+            providerOptions: {
+              bedrock: {
+                citations: { enabled: true },
+              },
+            },
+          };
+
+          console.log('Adding file part:', {
+            type: filePart.type,
+            mediaType: filePart.mediaType,
+            hasData: !!filePart.data,
+            dataType: filePart.data?.constructor?.name,
+            dataLength: Buffer.isBuffer(filePart.data) ? filePart.data.length : 'not a buffer',
+          });
+
+          processedParts.push(filePart);
         }
       } else {
         // Pass through other parts
@@ -158,12 +165,48 @@ export async function POST(req: Request) {
     });
   }
 
-  console.log("Processed UI messages:", JSON.stringify(processedUIMessages, null, 2));
+  // Debug: Check if data is in processedUIMessages
+  console.log('Processed UI Messages (last message):', JSON.stringify(processedUIMessages[processedUIMessages.length - 1], (key, value) => {
+    if (key === 'data' && value?.constructor?.name === 'Buffer') {
+      return `<Buffer: ${value.length} bytes>`;
+    }
+    return value;
+  }, 2));
 
-  // Convert UI messages to model messages
-  const modelMessages = convertToModelMessages(processedUIMessages);
+  // Build model messages with proper typing for AI SDK
+  const modelMessages = processedUIMessages.map(message => ({
+    role: message.role,
+    content: message.parts as any,
+    providerOptions: {
+      bedrock: {
+        citations: { enabled: true },
+      },
+    },
+  })) as any;
 
-  console.log("Model messages:", JSON.stringify(modelMessages, null, 2));
+  console.log('Model messages:', JSON.stringify(modelMessages.map((m: any) => ({
+    role: m.role,
+    content: m.content.map((c: any) => ({
+      type: c.type,
+      ...(c.type === 'file' ? {
+        mediaType: c.mediaType,
+        data: c.data
+          ? (Buffer.isBuffer(c.data)
+            ? `<Buffer: ${c.data.length} bytes>`
+            : (typeof c.data === 'string' ? `<String: ${c.data.length} chars>` : typeof c.data))
+          : 'MISSING',
+        providerOptions: c.providerOptions,
+      } : {}),
+      ...(c.type === 'document' ? {
+        source: {
+          type: c.source?.type,
+          media_type: c.source?.media_type,
+          data: c.source?.data ? `<base64: ${c.source.data.substring(0, 50)}... (${c.source.data.length} chars)>` : undefined,
+        }
+      } : {}),
+      ...(c.type === 'text' ? { text: c.text?.substring(0, 50), textLength: c.text?.length } : {}),
+    })),
+  })), null, 2));
 
   const stream = await myAgent.stream(modelMessages, {
     stopWhen: stepCountIs(5),
@@ -174,6 +217,13 @@ export async function POST(req: Request) {
     } : undefined,
     maxSteps: 3,
     toolChoice: "auto",
+    providerOptions: {
+      bedrock: {
+        citations: {
+          enabled: true
+        }
+      }
+    }
   });
 
   return stream.toUIMessageStreamResponse({
