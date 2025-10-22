@@ -1,29 +1,7 @@
 import { mastra } from "@/src/mastra";
 import { stepCountIs, type UIMessage, convertToModelMessages } from "ai";
-import { z } from "zod";
 import { pdf } from "pdf-parse";
 import officeParser from "officeparser";
-
-const evaluationSectionSchema = z.object({
-  evaluation: z.string(),
-  strengths: z.array(z.string()),
-  improvementsNeeded: z.array(z.string()),
-  improvementActions: z.array(z.string()),
-});
-
-const reviewResponseSchema = z.object({
-  overallEvaluation: z.object({
-    evaluation: z.string(),
-    improvementActions: z.array(z.string()),
-  }),
-  documentFormat: evaluationSectionSchema,
-  readerPerspective: evaluationSectionSchema,
-  implementationContent: evaluationSectionSchema,
-  userImpact: evaluationSectionSchema,
-  costValidity: evaluationSectionSchema,
-  scheduleDescription: evaluationSectionSchema,
-  organizationChart: evaluationSectionSchema,
-});
 
 // Helper function to process files
 async function processFile(file: {
@@ -158,12 +136,8 @@ export async function POST(req: Request) {
     });
   }
 
-  console.log("Processed UI messages:", JSON.stringify(processedUIMessages, null, 2));
-
   // Convert UI messages to model messages
   const modelMessages = convertToModelMessages(processedUIMessages);
-
-  console.log("Model messages:", JSON.stringify(modelMessages, null, 2));
 
   const stream = await myAgent.stream(modelMessages, {
     stopWhen: stepCountIs(5),
