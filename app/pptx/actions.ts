@@ -3,7 +3,7 @@
 import { bedrock } from "../lib/bedrock-providers";
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { convertPptxToImages } from '../lib/pptx-converter';
+import { convertPptxToImages } from '../utils/pptx-converter';
 
 const pptxAnalysisSchema = z.object({
   summary: z.string().describe('PPTXファイル全体の要約（スライド内容、画像、テキストを含む）'),

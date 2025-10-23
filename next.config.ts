@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb', // Increase from default 1mb to handle larger PDFs
     },
   },
+  cacheComponents: true,
 };
 
 export default nextConfig;
