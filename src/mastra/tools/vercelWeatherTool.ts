@@ -2,21 +2,19 @@ import { tool } from "ai";
 import { z } from "zod";
 
 export const vercelWeatherTool = tool({
-  description: "Fetches current weather using Vercel AI SDK format",
+  description: "Vercel AI SDK形式で現在の天気を取得します",
   inputSchema: z.object({
-    location: z.string().describe('The location to get the weather for'),
+    location: z.string().describe('天気を取得する地域'),
   }),
   execute: async ({ location }) => {
-    console.log(`Fetching weather for ${location} (Vercel format tool)`);
-
-    // Return mock weather data
+    // モックの天気データを返す
     return {
       location: location,
       temperature: "22°C",
-      conditions: "Partly cloudy",
+      conditions: "晴れ時々曇り",
       humidity: "65%",
       windSpeed: "12 km/h",
-      lastUpdated: new Date().toLocaleString(),
+      lastUpdated: new Date().toLocaleString('ja-JP'),
     };
   },
 });

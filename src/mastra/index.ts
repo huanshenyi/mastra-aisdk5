@@ -4,6 +4,8 @@ import { LangfuseExporter } from "@mastra/langfuse";
 import { reviewWorkflow } from "./workflows/review-workflow"
 import { weatherAgent } from "./agents";
 import { reviewAgent } from "./agents/review-agent"
+import { deleteAgent } from "./agents/delete-agent"
+import { conditionalDeleteAgent } from "./agents/conditional-delete-agent"
 import { SamplingStrategyType, clearAITracingRegistry } from '@mastra/core/ai-tracing';
 import { LibSQLStore } from "@mastra/libsql";
 
@@ -21,14 +23,14 @@ const getMastraInstance = () => {
   clearAITracingRegistry();
 
   return new Mastra({
-    agents: { weatherAgent, reviewAgent },
+    agents: { weatherAgent, reviewAgent, deleteAgent, conditionalDeleteAgent },
     workflows: { reviewWorkflow },
     logger: new PinoLogger({
       name: "Mastra",
       level: "info",
     }),
     storage: new LibSQLStore({
-      url: ":memory:"
+      url: "file:./mastra.db"
     }),
     observability: {
       configs: {
