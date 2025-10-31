@@ -47,3 +47,4 @@ vector-memory.db
 review-memory.db
 review-memory.db-shm
 review-memory.db-wal
+!.env.example
